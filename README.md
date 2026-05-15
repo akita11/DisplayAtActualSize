@@ -5,6 +5,11 @@
 
 プリント基板の実物合わせなどで使えます。
 
+## 使い方
+
+DisplayAtActualSize.htmlを保存し、Webブラウザで開いて、上記の操作を行います。
+
+
 ## Author
 
 Junichi Akita (@akita11, akita@ifdl.jp)
