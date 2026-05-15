@@ -2,30 +2,31 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>読み込んだ画像を実寸で表示するツール</title>
+    <title>DisplayAtActualSize</title>
     <style>
         body { font-family: sans-serif; margin: 20px; background-color: #f0f0f0; }
         .controls { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 20px; }
         .input-group { margin-bottom: 10px; }
         label { display: inline-block; width: 150px; }
         input[type="number"] { width: 80px; padding: 5px; }
-        canvas { border: 1px solid #ccc; background-color: white; cursor: crosshair; max-width: 100%; }
+        canvas { border: 1px solid #ccc; background-color: white; cursor: crosshair; max-width: 100%; display: block; }
         .info { color: #666; font-size: 0.9em; margin-top: 5px; }
+        .status-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; background: #eee; font-weight: bold; }
     </style>
 </head>
 <body>
 
-    <h2>読み込んだ画像を実寸で表示するツール</h2>
+    <h2>DisplayAtActualSize</h2>
 
     <div class="controls">
         <div class="input-group">
             <input type="file" id="fileInput" accept="image/png,application/pdf">
-            <p class="info">※PDFはブラウザの仕様により1ページ目のみ画像として処理されます。</p>
         </div>
         <hr>
         <div class="input-group">
-            <label>水平線の長さ (x):</label>
-            <span id="pixelDist">0</span> px
+            <label>描画された線の長さ:</label>
+            <span id="pixelDist" class="status-badge">0</span> px
+            （<span id="lineType">-</span>）
         </div>
         <div class="input-group">
             <label>表示上の長さ (y):</label>
@@ -36,6 +37,7 @@
             <input type="number" id="valZ" value="200"> mm
         </div>
         <button id="resizeBtn">再描画（リサイズ）実行</button>
+        <p class="info">※ドラッグの向きで水平/垂直が自動で切り替わります。</p>
     </div>
 
     <canvas id="canvas"></canvas>
@@ -45,93 +47,114 @@
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
         const pixelDistText = document.getElementById('pixelDist');
+        const lineTypeText = document.getElementById('lineType');
         const resizeBtn = document.getElementById('resizeBtn');
 
         let img = new Image();
-        let startX, isDragging = false;
-        let lineX1, lineX2, lineY;
+        let startX, startY, isDragging = false;
+        let currentLine = { length: 0, type: "" };
 
         // 1. ファイル読み込み
         fileInput.addEventListener('change', (e) => {
             const file = e.target.files[0];
             if (!file) return;
-
             const reader = new FileReader();
-            reader.onload = (event) => {
-                img.src = event.target.result;
-                img.onload = () => {
-                    resetCanvas(img.width, img.height);
-                };
+            reader.onload = (ev) => {
+                img.src = ev.target.result;
+                img.onload = () => resetCanvas(img.width, img.height);
             };
             reader.readAsDataURL(file);
         });
 
-        function resetCanvas(width, height) {
-            canvas.width = width;
-            canvas.height = height;
-            ctx.drawImage(img, 0, 0, width, height);
+        function resetCanvas(w, h) {
+            canvas.width = w;
+            canvas.height = h;
+            ctx.drawImage(img, 0, 0, w, h);
         }
 
-        // 2. マウス操作で線を引く
+        // 2. マウス操作 (スナップ機能付き)
         canvas.addEventListener('mousedown', (e) => {
+            if (!img.src) return;
             const rect = canvas.getBoundingClientRect();
+            // キャンバス内の実際のピクセル座標を計算
             startX = (e.clientX - rect.left) * (canvas.width / rect.width);
-            lineY = (e.clientY - rect.top) * (canvas.height / rect.height);
+            startY = (e.clientY - rect.top) * (canvas.height / rect.height);
             isDragging = true;
         });
 
         canvas.addEventListener('mousemove', (e) => {
             if (!isDragging) return;
             const rect = canvas.getBoundingClientRect();
-            const currentX = (e.clientX - rect.left) * (canvas.width / rect.width);
-            
-            // 描画更新
+            const currX = (e.clientX - rect.left) * (canvas.width / rect.width);
+            const currY = (e.clientY - rect.top) * (canvas.height / rect.height);
+
+            const diffX = currX - startX;
+            const diffY = currY - startY;
+
+            let endX, endY;
+
+            // 水平か垂直か、移動量の大きい方を採用
+            if (Math.abs(diffX) > Math.abs(diffY)) {
+                // 水平線
+                endX = currX;
+                endY = startY;
+                currentLine.length = Math.abs(diffX);
+                currentLine.type = "水平";
+            } else {
+                // 垂直線
+                endX = startX;
+                endY = currY;
+                currentLine.length = Math.abs(diffY);
+                currentLine.type = "垂直";
+            }
+
+            // 描画
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
             
             ctx.beginPath();
-            ctx.strokeStyle = 'red';
-            ctx.lineWidth = 2;
-            ctx.moveTo(startX, lineY);
-            ctx.lineTo(currentX, lineY);
+            ctx.strokeStyle = '#ff0000';
+            ctx.lineWidth = 3;
+            ctx.setLineDash([5, 5]); // ドラッグ中は点線
+            ctx.moveTo(startX, startY);
+            ctx.lineTo(endX, endY);
             ctx.stroke();
+            ctx.setLineDash([]); // 実線に戻す
 
-            const dist = Math.abs(currentX - startX);
-            pixelDistText.innerText = Math.round(dist);
+            pixelDistText.innerText = Math.round(currentLine.length);
+            lineTypeText.innerText = currentLine.type;
         });
 
-        canvas.addEventListener('mouseup', (e) => {
-            if (!isDragging) return;
-            const rect = canvas.getBoundingClientRect();
-            const endX = (e.clientX - rect.left) * (canvas.width / rect.width);
-            lineX1 = startX;
-            lineX2 = endX;
+        canvas.addEventListener('mouseup', () => {
             isDragging = false;
+            // 確定時に実線で描き直す
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            // 最後に引いた線を赤線で残す
+            // (必要であればここに確定描画処理を追加)
         });
 
-        // 3. 再描画（リサイズ）ロジック
+        // 3. リサイズ実行
         resizeBtn.addEventListener('click', () => {
             const y = parseFloat(document.getElementById('valY').value);
             const z = parseFloat(document.getElementById('valZ').value);
             
-            if (!y || !z || y === 0) {
-                alert("有効な数値を入力してください");
+            if (!y || !z || y === 0 || !img.src) {
+                alert("画像を選択し、正しい数値を入力してください。");
                 return;
             }
 
-            // z / y の比率で画像を拡大縮小する
             const scaleFactor = z / y;
             const newWidth = img.width * scaleFactor;
             const newHeight = img.height * scaleFactor;
 
-            // キャンバスをリサイズして画像を再描画
             canvas.width = newWidth;
             canvas.height = newHeight;
             ctx.drawImage(img, 0, 0, newWidth, newHeight);
             
-            // 線情報をリセット
             pixelDistText.innerText = "0";
-        // alert(`画像を ${scaleFactor.toFixed(2)} 倍にリサイズしました。`);
+            lineTypeText.innerText = "-";
+            //alert(`画像を ${scaleFactor.toFixed(3)} 倍にリサイズしました。`);
         });
     </script>
 </body>
